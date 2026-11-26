@@ -1,4 +1,4 @@
-name: Render 3D Test Short
+name: Render 60s Stickman Short
 
 on:
   push:
@@ -12,20 +12,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Blender, FFmpeg, and EGL libraries
+      - name: Install Blender, FFmpeg, and graphics libraries
         run: |
           sudo apt-get update
           sudo apt-get install -y blender ffmpeg libegl1 libgl1 libxrender1 libxi6 libxkbcommon0 libsm6 libice6
 
-      - name: Render 3D frames in Blender
-        timeout-minutes: 5
+      - name: Render 60s 3D frames in Blender
+        timeout-minutes: 15
         run: blender --background --python scripts/render_scene.py
 
-      - name: Assemble 9x16 video with FFmpeg
+      - name: Assemble 9x16 60s video with captions
         run: python3 scripts/assemble_short.py
 
-      - name: Upload rendered MP4
+      - name: Upload rendered 60s MP4
         uses: actions/upload-artifact@v4
         with:
-          name: test-short-1080x1920
-          path: output/test_short.mp4
+          name: stickman-short-60s-1080x1920
+          path: output/final_60s_short.mp4
