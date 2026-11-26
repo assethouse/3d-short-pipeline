@@ -1,19 +1,25 @@
 import bpy
 
-# Clear default objects first so scene reference stays valid
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 
-# 9:16 vertical resolution, 30 fps, 90 frames (3 seconds)
+# Fast test settings: 540x960 (50% of 1080x1920), 24 fps, 24 frames (1s test)
 scene.render.resolution_x = 1080
 scene.render.resolution_y = 1920
-scene.render.resolution_percentage = 100
-scene.render.fps = 30
+scene.render.resolution_percentage = 50
+scene.render.fps = 24
 scene.frame_start = 1
-scene.frame_end = 90
+scene.frame_end = 24
 
-# Use BLENDER_EEVEE and PNG output
-scene.render.engine = "BLENDER_EEVEE"
+# Fast CPU Cycles for headless runners without GPU/EGL issues
+scene.render.engine = "CYCLES"
+scene.cycles.device = "CPU"
+scene.cycles.samples = 8
+scene.cycles.use_denoising = False
+scene.cycles.max_bounces = 2
+scene.cycles.diffuse_bounces = 1
+scene.cycles.glossy_bounces = 1
+
 scene.render.image_settings.file_format = "PNG"
 scene.render.filepath = "//build/frames/frame_"
 
@@ -38,7 +44,7 @@ prop.data.materials.append(prop_mat)
 prop.location = (0, -10, 0.9)
 prop.keyframe_insert(data_path="location", frame=1)
 prop.location = (0, 10, 0.9)
-prop.keyframe_insert(data_path="location", frame=90)
+prop.keyframe_insert(data_path="location", frame=24)
 
 # Camera pointing at the block
 bpy.ops.object.camera_add(location=(4.5, -13, 3.8))
