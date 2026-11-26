@@ -1,135 +1,153 @@
+import math
+import os
 import bpy
+
+os.makedirs("build/frames", exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
 
-# Keep test render fast on free runners (72 frames = 3s at 24fps; bump to 50% or 100% once verified)
+# 60 seconds at 15 fps = 900 frames (1080x1920 9:16 vertical)
+FPS = 15
+DURATION_SEC = 60
+TOTAL_FRAMES = FPS * DURATION_SEC
+
 scene.render.resolution_x = 1080
 scene.render.resolution_y = 1920
-scene.render.resolution_percentage = 50
-scene.render.fps = 24
+scene.render.resolution_percentage = 100
+scene.render.fps = FPS
 scene.frame_start = 1
-scene.frame_end = 72
+scene.frame_end = TOTAL_FRAMES
 
-scene.render.engine = "CYCLES"
-scene.cycles.device = "CPU"
-scene.cycles.samples = 12
-scene.cycles.use_denoising = False
-scene.cycles.max_bounces = 2
-scene.cycles.diffuse_bounces = 1
-scene.cycles.glossy_bounces = 1
-
+# Fast Workbench engine with flat/studio lighting for reliable headless rendering
+scene.render.engine = "BLENDER_WORKBENCH"
 scene.render.image_settings.file_format = "PNG"
-scene.render.filepath = "//build/frames/frame_"
+scene.render.filepath = os.path.abspath("build/frames/frame_")
 
 
-def make_mat(name, color, roughness=0.6):
+def make_mat(name, color):
     mat = bpy.data.materials.new(name)
-    mat.use_nodes = True
-    bsdf = mat.node_tree.nodes["Principled BSDF"]
-    bsdf.inputs["Base Color"].default_value = color
-    bsdf.inputs["Roughness"].default_value = roughness
+    mat.diffuse_color = color
     return mat
 
 
-# Sky background (stylized daylight blue)
-world = bpy.data.worlds.new("SkyWorld")
-scene.world = world
-world.use_nodes = True
-bg = world.node_tree.nodes.get("Background")
-if bg:
-    bg.inputs["Color"].default_value = (0.35, 0.62, 0.95, 1.0)
-    bg.inputs["Strength"].default_value = 1.0
-
-# Ground fields on left and right
-bpy.ops.mesh.primitive_plane_add(size=120, location=(0, 0, -0.02))
-field = bpy.context.active_object
-field.data.materials.append(make_mat("FieldMat", (0.28, 0.52, 0.18, 1.0), 0.9))
+# Grass field
+bpy.ops.mesh.primitive_plane_add(size=200, location=(0, 0, 0))
+grass = bpy.context.active_object
+grass.name = "Grass"
+grass.data.materials.append(make_mat("GrassMat", (0.20, 0.58, 0.16, 1.0)))
 
 # Straight road
-bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.01))
+bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.02))
 road = bpy.context.active_object
-road.scale = (7.0, 120.0, 0.04)
-road.data.materials.append(make_mat("RoadMat", (0.10, 0.11, 0.14, 1.0), 0.75))
+road.scale = (8.0, 200.0, 0.04)
+road.data.materials.append(make_mat("RoadMat", (0.12, 0.13, 0.16, 1.0)))
 
-# Center yellow line
-bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.035))
+# Road center line
+bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.05))
 line = bpy.context.active_object
-line.scale = (0.18, 120.0, 0.01)
-line.data.materials.append(make_mat("LineMat", (0.98, 0.78, 0.10, 1.0), 0.5))
+line.scale = (0.22, 200.0, 0.02)
+line.data.materials.append(make_mat("LineMat", (0.98, 0.80, 0.10, 1.0)))
 
-# Roadside tree trunk + stylized canopy
-bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=0.45, depth=4.0, location=(5.2, 8.0, 2.0))
+# Tree (trunk + foliage; shrinks to stump after frame 540 / 36s)
+bpy.ops.mesh.primitive_cylinder_add(vertices=12, radius=0.45, depth=4.5, location=(5.5, 10.0, 2.25))
 trunk = bpy.context.active_object
-trunk.data.materials.append(make_mat("TrunkMat", (0.36, 0.21, 0.11, 1.0), 0.85))
+trunk.name = "TreeTrunk"
+trunk.data.materials.append(make_mat("TrunkMat", (0.38, 0.22, 0.10, 1.0)))
 
-bpy.ops.mesh.primitive_icosphere_add(subdivisions=2, radius=2.6, location=(5.2, 8.0, 4.8))
+bpy.ops.mesh.primitive_icosphere_add(subdivisions=2, radius=2.7, location=(5.5, 10.0, 5.4))
 foliage = bpy.context.active_object
-foliage.scale = (1.1, 1.1, 0.85)
-foliage.data.materials.append(make_mat("LeafMat", (0.16, 0.58, 0.18, 1.0), 0.7))
+foliage.name = "TreeFoliage"
+foliage.data.materials.append(make_mat("LeafMat", (0.14, 0.65, 0.20, 1.0)))
 
-# Bold red warning beacon/sign post next to tree
-bpy.ops.mesh.primitive_cube_add(size=1, location=(4.2, 6.2, 1.6))
-sign = bpy.context.active_object
-sign.scale = (0.3, 1.4, 2.2)
-sign.data.materials.append(make_mat("SignMat", (0.90, 0.12, 0.10, 1.0), 0.4))
+# Keyframe tree chopping down at 36s (frame 540) -> stump (frame 555+)
+trunk.scale = (1.0, 1.0, 1.0)
+trunk.keyframe_insert(data_path="scale", frame=1)
+trunk.keyframe_insert(data_path="scale", frame=540)
+trunk.scale = (1.1, 1.1, 0.22)
+trunk.keyframe_insert(data_path="scale", frame=555)
 
-# Car body + cabin (stylized low-poly car driving down road, subtly steering toward tree)
-bpy.ops.mesh.primitive_cube_add(size=1, location=(1.6, -25.0, 0.75))
+foliage.scale = (1.0, 1.0, 1.0)
+foliage.keyframe_insert(data_path="scale", frame=1)
+foliage.keyframe_insert(data_path="scale", frame=540)
+foliage.scale = (0.001, 0.001, 0.001)
+foliage.keyframe_insert(data_path="scale", frame=550)
+
+# Stickman character standing near the roadside/tree and reacting
+stick_root = bpy.data.objects.new("StickmanRoot", None)
+scene.collection.objects.link(stick_root)
+stick_root.location = (3.6, 7.5, 0.0)
+
+black_mat = make_mat("StickBlack", (0.05, 0.05, 0.06, 1.0))
+
+# Head
+bpy.ops.mesh.primitive_uv_sphere_add(segments=16, ring_count=12, radius=0.32, location=(0, 0, 2.15))
+head = bpy.context.active_object
+head.parent = stick_root
+head.data.materials.append(black_mat)
+
+# Torso
+bpy.ops.mesh.primitive_cylinder_add(vertices=10, radius=0.09, depth=1.1, location=(0, 0, 1.3))
+torso = bpy.context.active_object
+torso.parent = stick_root
+torso.data.materials.append(black_mat)
+
+# Left & Right Legs
+for side, name in [(-0.18, "LegL"), (0.18, "LegR")]:
+    bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.07, depth=0.85, location=(side, 0, 0.42))
+    leg = bpy.context.active_object
+    leg.name = name
+    leg.parent = stick_root
+    leg.data.materials.append(black_mat)
+
+# Left & Right Arms
+for side, name in [(-0.35, "ArmL"), (0.35, "ArmR")]:
+    bpy.ops.mesh.primitive_cylinder_add(vertices=8, radius=0.065, depth=0.75, location=(side, 0, 1.55))
+    arm = bpy.context.active_object
+    arm.name = name
+    arm.parent = stick_root
+    arm.rotation_euler = (0.0, side * 1.4, 0.0)
+    arm.data.materials.append(black_mat)
+
+# Animate stickman subtle wave/jump
+for f in range(1, TOTAL_FRAMES + 1, 15):
+    stick_root.location = (3.6, 7.5, 0.15 if (f // 15) % 2 == 1 else 0.0)
+    stick_root.keyframe_insert(data_path="location", frame=f)
+
+# Car that loops down the road and drifts toward the tree/stump
+bpy.ops.mesh.primitive_cube_add(size=1, location=(1.8, -30.0, 0.75))
 car = bpy.context.active_object
-car.scale = (2.1, 4.4, 1.1)
-car.data.materials.append(make_mat("CarMat", (0.88, 0.90, 0.94, 1.0), 0.3))
+car.name = "Car"
+car.scale = (2.2, 4.5, 1.2)
+car.data.materials.append(make_mat("CarMat", (0.92, 0.94, 0.97, 1.0)))
 
-bpy.ops.mesh.primitive_cube_add(size=1, location=(1.6, -25.3, 1.55))
-cabin = bpy.context.active_object
-cabin.scale = (1.75, 2.2, 0.85)
-cabin.parent = car
-cabin.location = (0.0, -0.2, 0.8)
-cabin.data.materials.append(make_mat("CabinMat", (0.16, 0.22, 0.30, 1.0), 0.25))
+for cycle_start in range(1, TOTAL_FRAMES, 180):
+    cycle_end = min(cycle_start + 179, TOTAL_FRAMES)
+    mid = cycle_start + (cycle_end - cycle_start) // 2
+    car.location = (1.8, -35.0, 0.75)
+    car.keyframe_insert(data_path="location", frame=cycle_start)
+    car.location = (2.6, -10.0, 0.75)
+    car.keyframe_insert(data_path="location", frame=mid)
+    car.location = (4.8, 9.0, 0.75)
+    car.keyframe_insert(data_path="location", frame=cycle_end)
 
-# Animate car from y=-25 toward y=12 and drifting slightly right toward the tree
-car.location = (1.6, -25.0, 0.75)
-car.keyframe_insert(data_path="location", frame=1)
-car.location = (2.4, -5.0, 0.75)
-car.keyframe_insert(data_path="location", frame=36)
-car.location = (4.3, 6.5, 0.75)
-car.keyframe_insert(data_path="location", frame=72)
-
-# Camera with quick cuts: high overview (1-24), low roadside angle (25-48), chase angle (49-72)
-bpy.ops.object.camera_add(location=(0.0, -18.0, 14.0))
+# Camera with dynamic cuts across the 60 seconds
+bpy.ops.object.camera_add(location=(0.0, -22.0, 12.0))
 cam = bpy.context.active_object
 scene.camera = cam
 
-# Cut 1: High overview
-cam.location = (0.0, -18.0, 14.0)
-cam.rotation_euler = (0.78, 0.0, 0.0)
-cam.keyframe_insert(data_path="location", frame=1)
-cam.keyframe_insert(data_path="rotation_euler", frame=1)
-
-cam.location = (0.0, -8.0, 12.0)
-cam.keyframe_insert(data_path="location", frame=24)
-cam.keyframe_insert(data_path="rotation_euler", frame=24)
-
-# Cut 2: Roadside view looking back along the road past the tree/sign
-cam.location = (6.8, 12.0, 2.2)
-cam.rotation_euler = (1.35, 0.0, 2.65)
-cam.keyframe_insert(data_path="location", frame=25)
-cam.keyframe_insert(data_path="rotation_euler", frame=25)
-cam.keyframe_insert(data_path="location", frame=48)
-cam.keyframe_insert(data_path="rotation_euler", frame=48)
-
-# Cut 3: Low behind-car chase angle
-cam.location = (1.8, -14.0, 3.2)
-cam.rotation_euler = (1.25, 0.0, 0.0)
-cam.keyframe_insert(data_path="location", frame=49)
-cam.keyframe_insert(data_path="rotation_euler", frame=49)
-cam.location = (2.8, 1.0, 2.8)
-cam.keyframe_insert(data_path="location", frame=72)
-cam.keyframe_insert(data_path="rotation_euler", frame=72)
-
-# Sun light
-bpy.ops.object.light_add(type="SUN", location=(10.0, -10.0, 20.0))
-sun = bpy.context.active_object
-sun.data.energy = 3.5
+cuts = [
+    (1, (0.0, -22.0, 12.0), (0.85, 0.0, 0.0)),
+    (150, (7.5, 14.0, 2.4), (1.35, 0.0, 2.75)),
+    (300, (1.5, -18.0, 3.2), (1.25, 0.0, 0.0)),
+    (450, (6.2, 4.5, 2.0), (1.40, 0.0, 2.40)),
+    (600, (-4.0, 2.0, 5.5), (1.15, 0.0, -0.75)),
+    (750, (0.0, -16.0, 8.0), (1.05, 0.0, 0.0)),
+]
+for frame_num, loc, rot in cuts:
+    cam.location = loc
+    cam.rotation_euler = rot
+    cam.keyframe_insert(data_path="location", frame=frame_num)
+    cam.keyframe_insert(data_path="rotation_euler", frame=frame_num)
 
 bpy.ops.render.render(animation=True)
